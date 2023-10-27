@@ -67,8 +67,14 @@ func startNode(ctx *cli.Context) error {
 		}
 	}
 
+	var initialPeers []string
+	providedInitialPeerList := ctx.GlobalString(initialPeerList.Name)
+	if len(providedInitialPeerList) > 0 {
+		initialPeers = strings.Split(providedInitialPeerList, ",")
+	}
+
 	argsSeeder := p2p.ArgsNetMessenger{
-		InitialPeerList: strings.Split(ctx.GlobalString(initialPeerList.Name), ","),
+		InitialPeerList: initialPeers,
 		PrivateKeyBytes: privateKeyBytes,
 	}
 
