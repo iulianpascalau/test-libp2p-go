@@ -1,11 +1,13 @@
 package p2p
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
 	secp "github.com/decred/dcrd/dcrec/secp256k1/v4"
 	"github.com/libp2p/go-libp2p"
+	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
@@ -13,7 +15,8 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
 )
 
-const tcpInterface = "0.0.0.0" // bind on all interfaces
+const tcpInterface = "0.0.0.0"       // bind on all interfaces
+const pubSubMaxMessageSize = 1 << 21 // 2 MB
 
 // ArgsNetMessenger defines the arguments to instantiate a network messenger wrapper struct
 type ArgsNetMessenger struct {
@@ -23,7 +26,9 @@ type ArgsNetMessenger struct {
 
 type netMessenger struct {
 	*bootstrapper
-	host host.Host
+	host   host.Host
+	pb     *pubsub.PubSub
+	cancel func()
 }
 
 // GeneratePrivateKeyBytes will generate a byte slice that can be used as a private key
@@ -81,9 +86,26 @@ func NewNetMessenger(args ArgsNetMessenger) (*netMessenger, error) {
 		return nil, err
 	}
 
+	optsPS := []pubsub.Option{
+		pubsub.WithPeerFilter(instance.newPeerFound),
+		pubsub.WithMaxMessageSize(pubSubMaxMessageSize),
+	}
+
+	var ctx context.Context
+	ctx, instance.cancel = context.WithCancel(context.Background())
+
+	instance.pb, err = pubsub.NewGossipSub(ctx, h, optsPS...)
+	if err != nil {
+		return nil, err
+	}
+
 	fmt.Printf("Listening on the following interfaces: %s\n", strings.Join(instance.Addresses(), ", "))
 
 	return instance, nil
+}
+
+func (netMes *netMessenger) newPeerFound(_ peer.ID, _ string) bool {
+	return true
 }
 
 // Addresses returns the addresses that the current messenger was able to bind to
@@ -122,6 +144,8 @@ func (netMes *netMessenger) GetConnectedness(pid peer.ID) network.Connectedness 
 
 // Close will call Close on all inner components
 func (netMes *netMessenger) Close() error {
+	netMes.cancel()
 	netMes.bootstrapper.close()
+
 	return netMes.host.Close()
 }
