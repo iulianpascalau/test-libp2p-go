@@ -77,6 +77,8 @@ func startNode(ctx *cli.Context) error {
 		return err
 	}
 
+	netMes.Bootstrap()
+
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 
